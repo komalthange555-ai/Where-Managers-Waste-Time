@@ -1,4 +1,4 @@
-# Where-# Where Managers Waste Time – Interactive Simulation
+# Where Managers Waste Time – Interactive Simulation
 
 Most managers are busy.
 
