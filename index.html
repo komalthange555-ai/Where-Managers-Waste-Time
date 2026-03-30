@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>A Day in the Life of a Manager</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #F7F2E8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    /* Prevent text size adjustment on orientation change */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  #game {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 1rem 1rem env(safe-area-inset-bottom, 1rem);
+  }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  .game-bg {
+    background: #FFFBF0;
+    border-radius: 20px;
+    border: 2px solid #FAC775;
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── Confetti strip ── */
+  .confetti-strip {
+    display: flex; height: 8px; border-radius: 8px 8px 0 0;
+    overflow: hidden; margin: -1.25rem -1.25rem 1.25rem -1.25rem;
+  }
+  .cs { flex: 1; }
+
+  /* ── Time bar ── */
+  .time-bar-wrap {
+    background: #FEF3C7; border: 1.5px solid #FAC775;
+    border-radius: 14px; padding: 0.875rem 1rem; margin-bottom: 1rem;
+  }
+  .time-bar-top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .time-label { font-size: 13px; color: #854F0B; font-weight: 500; }
+  .time-count { font-size: 13px; font-weight: 500; color: #633806; }
+  .bar-track { height: 8px; background: #FDE68A; border-radius: 99px; overflow: hidden; border: 1px solid #FAC775; }
+  .bar-fill { height: 100%; background: #1D9E75; border-radius: 99px; transition: width 0.5s cubic-bezier(.4,0,.2,1); }
+  .bar-fill.warn { background: #BA7517; }
+  .bar-fill.danger { background: #E24B4A; }
+
+  /* ── Step dots ── */
+  .step-dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 1rem; }
+  .dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: #FDE68A; border: 2px solid #FAC775; transition: all 0.3s;
+  }
+  .dot.done { background: #1D9E75; border-color: #0F6E56; }
+  .dot.active { background: #EF9F27; border-color: #BA7517; transform: scale(1.3); }
+
+  /* ── Situation card ── */
+  .situation-card {
+    background: #fff; border: 1.5px solid #FAC775;
+    border-radius: 16px; padding: 1rem; margin-bottom: 0.875rem;
+  }
+  .round-tag {
+    font-size: 11px; font-weight: 500; letter-spacing: .04em;
+    color: #854F0B; background: #FEF3C7;
+    padding: 3px 10px; border-radius: 99px;
+    display: inline-block; margin-bottom: 8px; border: 1px solid #FAC775;
+  }
+  .situation-title { font-size: 17px; font-weight: 600; color: #1a1a1a; margin-bottom: 6px; line-height: 1.3; }
+  .situation-sub { font-size: 14px; color: #5F5E5A; line-height: 1.65; }
+
+  /* ── Choices ── */
+  .choices { display: flex; flex-direction: column; gap: 8px; }
+  .choice-btn {
+    background: #fff; border: 1.5px solid #FAC775; border-radius: 12px;
+    padding: 13px 14px; display: flex; align-items: center; gap: 11px;
+    cursor: pointer; text-align: left; width: 100%;
+    /* Better tap feedback */
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, border-color 0.15s;
+    /* Minimum touch target */
+    min-height: 52px;
+  }
+  /* Only apply hover transform on non-touch devices */
+  @media (hover: hover) {
+    .choice-btn:hover { background: #FFFBF0; border-color: #EF9F27; transform: translateX(3px); }
+  }
+  .choice-btn:active { background: #FFFBF0; border-color: #EF9F27; transform: scale(0.99); }
+  .choice-btn.chosen { border-color: #1D9E75; background: #E1F5EE; }
+
+  .choice-letter {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: #FEF3C7; border: 1.5px solid #FAC775;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0; color: #854F0B;
+  }
+  .choice-btn.chosen .choice-letter { background: #1D9E75; border-color: #0F6E56; color: #fff; }
+  .choice-text { font-size: 14px; color: #1a1a1a; line-height: 1.4; flex: 1; }
+  .choice-time { font-size: 12px; color: #888780; white-space: nowrap; flex-shrink: 0; }
+
+  /* ── Feedback toast ── */
+  .feedback-toast {
+    background: #E1F5EE; border: 1.5px solid #5DCAA5;
+    border-radius: 12px; padding: 11px 14px;
+    font-size: 13px; color: #085041; margin-top: 10px; display: none;
+    line-height: 1.5;
+    animation: popIn 0.3s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes popIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+  /* ── Buttons ── */
+  .next-btn {
+    width: 100%; margin-top: 0.875rem; background: #EF9F27; color: #fff;
+    border: none; border-radius: 12px; padding: 15px;
+    font-size: 15px; font-weight: 600; cursor: pointer; display: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+    min-height: 52px;
+  }
+  .next-btn:active { background: #BA7517; transform: scale(0.98); }
+  @media (hover: hover) {
+    .next-btn:hover { background: #BA7517; }
+  }
+
+  /* ── Start screen ── */
+  .start-hero { text-align: center; padding: 0.5rem 0 1.25rem; }
+  .start-icon-row { display: flex; justify-content: center; gap: 14px; margin-bottom: 1rem; }
+  .s-icon {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center; font-size: 24px;
+  }
+  .start-title { font-size: 21px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; line-height: 1.3; }
+  .start-sub { font-size: 14px; color: #5F5E5A; line-height: 1.65; margin-bottom: 1.25rem; }
+  .start-pills { display: flex; gap: 7px; justify-content: center; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  .pill {
+    background: #FEF3C7; color: #854F0B; border: 1px solid #FAC775;
+    border-radius: 99px; padding: 5px 14px; font-size: 12px; font-weight: 500;
+  }
+  .start-btn {
+    background: #EF9F27; color: #fff; border: none; border-radius: 12px;
+    padding: 15px 48px; font-size: 15px; font-weight: 600;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+    min-height: 52px;
+  }
+  /* Full-width on small screens */
+  @media (max-width: 400px) {
+    .start-btn { width: 100%; padding: 15px; }
+  }
+  .start-btn:active { background: #BA7517; transform: scale(0.97); }
+  @media (hover: hover) {
+    .start-btn:hover { background: #BA7517; }
+  }
+
+  /* ── Results screen ── */
+  .results-title { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+  .results-sub { font-size: 14px; color: #5F5E5A; margin-bottom: 1.25rem; line-height: 1.65; }
+
+  .alloc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .alloc-label { font-size: 13px; color: #5F5E5A; width: 80px; flex-shrink: 0; }
+  .alloc-track { flex: 1; height: 10px; background: #FEF3C7; border-radius: 99px; overflow: hidden; border: 1px solid #FAC775; }
+  .alloc-fill { height: 100%; border-radius: 99px; transition: width 0.8s cubic-bezier(.4,0,.2,1); width: 0; }
+  .alloc-pct { font-size: 13px; font-weight: 500; color: #1a1a1a; width: 34px; text-align: right; flex-shrink: 0; }
+
+  .verdict-card {
+    background: #fff; border: 1.5px solid #FAC775;
+    border-radius: 14px; padding: 1rem; margin: 0.875rem 0;
+  }
+  .verdict-head {
+    font-size: 11px; font-weight: 600; color: #854F0B;
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+  }
+  .verdict-text { font-size: 14px; color: #2C2C2A; line-height: 1.65; }
+
+  .fix-list { list-style: none; padding: 0; margin: 0; }
+  .fix-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid #FEF3C7;
+    font-size: 14px; color: #2C2C2A; line-height: 1.55;
+  }
+  .fix-item:last-child { border-bottom: none; }
+  .fix-dot { width: 8px; height: 8px; border-radius: 50%; background: #EF9F27; flex-shrink: 0; margin-top: 5px; }
+
+  .score-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 500;
+    margin-bottom: 1rem; border: 1.5px solid;
+  }
+  .badge-great { background: #E1F5EE; color: #0F6E56; border-color: #5DCAA5; }
+  .badge-ok    { background: #FAEEDA; color: #854F0B; border-color: #FAC775; }
+  .badge-poor  { background: #FCEBEB; color: #A32D2D; border-color: #F09595; }
+
+  .restart-btn {
+    width: 100%; margin-top: 1rem; background: #FEF3C7; color: #854F0B;
+    border: 1.5px solid #FAC775; border-radius: 12px; padding: 14px;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 52px;
+    transition: background 0.15s;
+  }
+  .restart-btn:active { background: #FDE68A; }
+  @media (hover: hover) { .restart-btn:hover { background: #FDE68A; } }
+
+  /* ── Calculator section ── */
+  .calc-section { margin-top: 1.5rem; }
+  .calc-header { font-size: 16px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+  .calc-sub { font-size: 13px; color: #5F5E5A; margin-bottom: 1.25rem; line-height: 1.55; }
+
+  .slider-row { margin-bottom: 1.1rem; }
+  .slider-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .slider-label { font-size: 13px; color: #2C2C2A; font-weight: 500; }
+  .slider-val { font-size: 13px; font-weight: 500; color: #854F0B; min-width: 36px; text-align: right; }
+
+  input[type=range].styled {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px; border-radius: 99px;
+    outline: none; cursor: pointer; border: none;
+    /* Larger touch area via padding trick */
+    padding: 8px 0;
+    background-clip: content-box;
+  }
+  input[type=range].styled::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #EF9F27; border: 2px solid #fff;
+    box-shadow: 0 0 0 1.5px #EF9F27;
+    cursor: pointer;
+  }
+  input[type=range].styled::-moz-range-thumb {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #EF9F27; border: 2px solid #fff;
+    cursor: pointer; box-sizing: border-box;
+  }
+
+  .total-row {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #FEF3C7; border: 1.5px solid #FAC775;
+    border-radius: 12px; padding: 10px 16px; margin-top: 1rem;
+  }
+  .total-label { font-size: 13px; color: #854F0B; font-weight: 500; }
+  .total-val { font-size: 15px; font-weight: 600; }
+  .total-ok   { color: #0F6E56; }
+  .total-warn { color: #A32D2D; }
+
+  .ideal-card {
+    background: #fff; border: 1.5px solid #FAC775;
+    border-radius: 14px; padding: 1rem; margin-top: 1rem;
+  }
+  .ideal-head {
+    font-size: 11px; font-weight: 600; color: #854F0B;
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
+  }
+
+  /* Stacked layout for ideal rows on mobile */
+  .ideal-row {
+    margin-bottom: 12px;
+  }
+  .ideal-row-top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 5px; gap: 6px; flex-wrap: wrap;
+  }
+  .ideal-label-text { font-size: 13px; color: #2C2C2A; }
+  .ideal-range-note { font-size: 11px; color: #888780; white-space: nowrap; flex-shrink: 0; }
+  .ideal-track { flex: 1; height: 6px; background: #FEF3C7; border-radius: 99px; overflow: hidden; }
+  .ideal-fill  { height: 100%; border-radius: 99px; }
+  .ideal-note  { font-size: 12px; color: #5F5E5A; margin-top: 8px; line-height: 1.55; }
+
+  .gap-tag { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 99px; margin-left: 6px; }
+  .gap-over  { background: #FCEBEB; color: #A32D2D; }
+  .gap-under { background: #E1F5EE; color: #085041; }
+  .gap-ok    { background: #E1F5EE; color: #085041; }
+
+  .divider { border: none; border-top: 1.5px solid #FAC775; margin: 1.5rem 0; }
+</style>
+</head>
+<body>
+
+<div id="game">
+
+  <!-- Start screen -->
+  <div id="screen-start" class="screen active">
+    <div class="game-bg">
+      <div class="confetti-strip">
+        <div class="cs" style="background:#FAC775"></div><div class="cs" style="background:#5DCAA5"></div>
+        <div class="cs" style="background:#F0997B"></div><div class="cs" style="background:#85B7EB"></div>
+        <div class="cs" style="background:#AFA9EC"></div><div class="cs" style="background:#FAC775"></div>
+        <div class="cs" style="background:#5DCAA5"></div><div class="cs" style="background:#F0997B"></div>
+      </div>
+      <div class="start-hero">
+        <div class="start-icon-row">
+          <div class="s-icon" style="background:#FEF3C7;">☕</div>
+          <div class="s-icon" style="background:#E1F5EE;">📋</div>
+          <div class="s-icon" style="background:#E6F1FB;">🤝</div>
+        </div>
+        <div class="start-title">A day in the life of a manager</div>
+        <div class="start-sub">You have 8 hours today. Seven decisions stand between you and the end of the day. Choose wisely — your team is watching.</div>
+        <div class="start-pills">
+          <span class="pill">⏱ 8 hours</span>
+          <span class="pill">7 rounds</span>
+          <span class="pill">+ time calculator</span>
+        </div>
+        <button class="start-btn" onclick="startGame()">Start my day →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game screen -->
+  <div id="screen-game" class="screen">
+    <div class="game-bg">
+      <div class="confetti-strip">
+        <div class="cs" style="background:#FAC775"></div><div class="cs" style="background:#5DCAA5"></div>
+        <div class="cs" style="background:#F0997B"></div><div class="cs" style="background:#85B7EB"></div>
+        <div class="cs" style="background:#AFA9EC"></div><div class="cs" style="background:#FAC775"></div>
+        <div class="cs" style="background:#5DCAA5"></div><div class="cs" style="background:#F0997B"></div>
+      </div>
+      <div class="time-bar-wrap">
+        <div class="time-bar-top">
+          <span class="time-label">Round <span id="round-num">1</span> of 7</span>
+          <span class="time-count"><span id="hours-left">8.0</span>h remaining</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="time-bar" style="width:0%"></div></div>
+      </div>
+      <div class="step-dots" id="dots"></div>
+      <div class="situation-card">
+        <span class="round-tag" id="round-tag"></span>
+        <div class="situation-title" id="q-title"></div>
+        <div class="situation-sub" id="q-sub"></div>
+      </div>
+      <div class="choices" id="choices-list"></div>
+      <div class="feedback-toast" id="feedback"></div>
+      <button class="next-btn" id="next-btn" onclick="nextRound()">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Results screen -->
+  <div id="screen-results" class="screen">
+    <div class="game-bg">
+      <div class="confetti-strip">
+        <div class="cs" style="background:#FAC775"></div><div class="cs" style="background:#5DCAA5"></div>
+        <div class="cs" style="background:#F0997B"></div><div class="cs" style="background:#85B7EB"></div>
+        <div class="cs" style="background:#AFA9EC"></div><div class="cs" style="background:#FAC775"></div>
+        <div class="cs" style="background:#5DCAA5"></div><div class="cs" style="background:#F0997B"></div>
+      </div>
+
+      <div class="results-title">Your day, unpacked</div>
+      <div class="results-sub">Here's how you actually spent your 8 hours — and what it says about your leadership style.</div>
+      <div id="score-badge-wrap"></div>
+      <div id="alloc-bars"></div>
+      <div class="verdict-card">
+        <div class="verdict-head">Reality</div>
+        <div class="verdict-text" id="reality-text"></div>
+      </div>
+      <div class="verdict-card">
+        <div class="verdict-head">Impact on your team</div>
+        <div class="verdict-text" id="impact-text"></div>
+      </div>
+      <div class="verdict-card">
+        <div class="verdict-head">What to change</div>
+        <ul class="fix-list" id="fix-list"></ul>
+      </div>
+
+      <hr class="divider">
+
+      <div class="calc-section">
+        <div class="calc-header">How does your real week look?</div>
+        <div class="calc-sub">Adjust the sliders to reflect how you actually spend your time at work. See how it compares to what research suggests is healthy.</div>
+
+        <div id="sliders-wrap"></div>
+
+        <div class="total-row">
+          <span class="total-label">Total allocated</span>
+          <span class="total-val" id="total-val">100%</span>
+        </div>
+
+        <div class="ideal-card">
+          <div class="ideal-head">Your allocation vs. healthy benchmarks</div>
+          <div id="comparison-rows"></div>
+          <div class="ideal-note" id="calc-insight"></div>
+        </div>
+      </div>
+
+      <button class="restart-btn" onclick="restartGame()">Play again ↺</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const TOTAL_ROUNDS = 7;
+
+const rounds = [
+  {
+    tag:"Round 1 · Morning start", title:"What do you do first?",
+    sub:"It's 9 AM. Your inbox has 47 unread. Your team's standup is in 30 minutes. You have a 1:1 scheduled — and you haven't looked at today's priorities yet.",
+    choices:[
+      {letter:"A",text:"Check and respond to emails",time:1.5,feedback:"Reactive start. You signal to others that your inbox controls your attention.",tags:{reporting:1.5}},
+      {letter:"B",text:"Run the team standup meeting",time:2,feedback:"Good rhythm — but 2 hours is long. Keep standups tight.",tags:{meetings:2}},
+      {letter:"C",text:"Do the 1:1 coaching session",time:1,feedback:"Strong choice. Direct investment in your team pays compound returns.",tags:{coaching:1}},
+      {letter:"D",text:"Block time to plan your day",time:1,feedback:"Proactive. You lead the day instead of reacting to it.",tags:{strategy:1}},
+    ]
+  },
+  {
+    tag:"Round 2 · Mid-morning", title:"Leadership asks for a report",
+    sub:"A senior leader needs a status update by noon. It's something you've done before, but it takes time. You have other priorities.",
+    choices:[
+      {letter:"A",text:"Write it yourself from scratch",time:2,feedback:"Fast but unsustainable. You become the only one who can do this.",tags:{reporting:2}},
+      {letter:"B",text:"Delegate to a capable team member",time:0.5,feedback:"Excellent. You develop others and protect your time.",tags:{execution:0.5}},
+      {letter:"C",text:"Delay — ask for an extension",time:0,feedback:"Buys time, but risks credibility. Use sparingly.",tags:{reporting:0}},
+      {letter:"D",text:"Pull existing data and send a summary",time:0.5,feedback:"Smart and efficient. Good managers know what already exists.",tags:{execution:0.5}},
+    ]
+  },
+  {
+    tag:"Round 3 · Mid-day", title:"A team member is struggling",
+    sub:"One of your reports has missed two deadlines. Their work quality has slipped. Others are starting to notice.",
+    choices:[
+      {letter:"A",text:"Ignore it — they'll figure it out",time:0,feedback:"Avoidance is a decision. Problems compound when managers look away.",tags:{execution:0}},
+      {letter:"B",text:"Set up a coaching conversation",time:1,feedback:"Right call. Address it early, directly, and with care.",tags:{coaching:1}},
+      {letter:"C",text:"Give a formal warning",time:0.5,feedback:"Too early without first trying to understand what's going on.",tags:{reporting:0.5}},
+      {letter:"D",text:"Redistribute their work to the team",time:0.5,feedback:"Solves the immediate problem, but masks the root cause.",tags:{execution:0.5}},
+    ]
+  },
+  {
+    tag:"Round 4 · Afternoon", title:"You're invited to 3 back-to-back meetings",
+    sub:"Finance review, product sync, and a team retrospective — all overlap between 2–5 PM. You can't attend everything.",
+    choices:[
+      {letter:"A",text:"Attend all three",time:3,feedback:"You're present but scattered. Three meetings leaves no time to actually do anything.",tags:{meetings:3}},
+      {letter:"B",text:"Attend only the retro — the most relevant one",time:1,feedback:"Good prioritisation. You protect your time while staying close to the team.",tags:{meetings:1}},
+      {letter:"C",text:"Skip all — send an async message",time:0,feedback:"Efficient, but you may miss context others won't write down.",tags:{strategy:0}},
+      {letter:"D",text:"Send a team member to two of them",time:0.5,feedback:"Developing your team's visibility and judgment. Well played.",tags:{coaching:0.5}},
+    ]
+  },
+  {
+    tag:"Round 5 · Reporting crunch", title:"A key metric looks off in the dashboard",
+    sub:"While reviewing the weekly execution report, you notice a KPI has dropped 18% with no explanation. The board review is in two days.",
+    choices:[
+      {letter:"A",text:"Dig into the data yourself for 2 hours",time:2,feedback:"Thorough, but is this the best use of your time? You might be the slowest person to do this.",tags:{reporting:2}},
+      {letter:"B",text:"Ask the analyst to investigate and brief you",time:0.5,feedback:"Smart delegation. You stay informed without becoming the analyst.",tags:{execution:0.5}},
+      {letter:"C",text:"Raise it in the next team meeting",time:0,feedback:"Risky — waiting loses valuable diagnostic time before the board review.",tags:{reporting:0}},
+      {letter:"D",text:"Document the gap and write a preliminary explanation",time:1,feedback:"Balanced. You take ownership while creating a paper trail for accountability.",tags:{reporting:1,execution:0.5}},
+    ]
+  },
+  {
+    tag:"Round 6 · Execution breakdown", title:"A project milestone was missed — silently",
+    sub:"You discover a key deliverable was due yesterday. No one flagged it. The client hasn't noticed yet, but they will soon.",
+    choices:[
+      {letter:"A",text:"Say nothing and hope to recover quietly",time:0,feedback:"Avoiding the truth compounds damage. Clients respect honesty over silence.",tags:{execution:0}},
+      {letter:"B",text:"Proactively update the client with a revised plan",time:1,feedback:"Courageous and professional. This builds more trust than hitting the original deadline.",tags:{execution:1}},
+      {letter:"C",text:"Hold a post-mortem with the team first",time:1,feedback:"Good instinct for learning — but the client still needs to hear from you promptly.",tags:{execution:0.5,coaching:0.5}},
+      {letter:"D",text:"Assign blame in a team message and demand an explanation",time:0.5,feedback:"Blame without process destroys psychological safety. Root cause first, accountability second.",tags:{reporting:0.5}},
+    ]
+  },
+  {
+    tag:"Round 7 · End of day", title:"The final hour — what do you prioritise?",
+    sub:"It's 5 PM. You have about an hour left. The day has been full. What's the most important thing to end on?",
+    choices:[
+      {letter:"A",text:"Close out open tasks and clear the board",time:1,feedback:"Satisfying but reactive. Finishing tasks doesn't mean you led the day.",tags:{execution:1}},
+      {letter:"B",text:"Check in with your team — how are they doing?",time:1,feedback:"Strong habit. Teams perform better when managers stay human.",tags:{coaching:1}},
+      {letter:"C",text:"Plan tomorrow before you close your laptop",time:1,feedback:"Best investment of your last hour. Tomorrow you'll start ahead.",tags:{strategy:1}},
+      {letter:"D",text:"Read something that makes you a better leader",time:1,feedback:"Rare and underrated. Managers who stop learning, stop leading.",tags:{strategy:1}},
+    ]
+  }
+];
+
+const sliderDefs = [
+  { key: "meetings",  label: "Meetings",              default: 30, color: "#378ADD", ideal: [15,25] },
+  { key: "reporting", label: "Reporting / Admin",     default: 20, color: "#BA7517", ideal: [10,20] },
+  { key: "coaching",  label: "Coaching team",         default: 20, color: "#1D9E75", ideal: [20,30] },
+  { key: "strategy",  label: "Strategy / Thinking",   default: 15, color: "#7F77DD", ideal: [15,25] },
+  { key: "execution", label: "Execution / Follow-ups",default: 15, color: "#D85A30", ideal: [15,25] },
+];
+
+let state, currentRound, choiceMade, sliderVals = {};
+
+function startGame() {
+  state = { meetings:0, reporting:0, coaching:0, strategy:0, execution:0, timeUsed:0 };
+  currentRound = 0;
+  showScreen('screen-game');
+  buildDots();
+  renderRound();
+}
+
+function buildDots() {
+  const d = document.getElementById('dots');
+  d.innerHTML = '';
+  for (let i = 0; i < TOTAL_ROUNDS; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.id = 'dot-' + i;
+    d.appendChild(dot);
+  }
+}
+
+function updateDots() {
+  for (let i = 0; i < TOTAL_ROUNDS; i++) {
+    const d = document.getElementById('dot-' + i);
+    d.className = 'dot' + (i < currentRound ? ' done' : i === currentRound ? ' active' : '');
+  }
+}
+
+function renderRound() {
+  choiceMade = false;
+  const r = rounds[currentRound];
+  document.getElementById('round-num').textContent = currentRound + 1;
+  document.getElementById('round-tag').textContent = r.tag;
+  document.getElementById('q-title').textContent = r.title;
+  document.getElementById('q-sub').textContent = r.sub;
+  document.getElementById('feedback').style.display = 'none';
+  document.getElementById('next-btn').style.display = 'none';
+  updateDots();
+  const cl = document.getElementById('choices-list');
+  cl.innerHTML = '';
+  r.choices.forEach((c, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.innerHTML = `<div class="choice-letter">${c.letter}</div><div class="choice-text">${c.text}</div><div class="choice-time">${c.time > 0 ? c.time + 'h' : '—'}</div>`;
+    btn.onclick = () => makeChoice(i);
+    cl.appendChild(btn);
+  });
+}
+
+function makeChoice(idx) {
+  if (choiceMade) return;
+  choiceMade = true;
+  const r = rounds[currentRound];
+  const c = r.choices[idx];
+  state.timeUsed += c.time;
+  Object.keys(c.tags).forEach(k => { state[k] += c.tags[k]; });
+  document.querySelectorAll('.choice-btn').forEach((b, i) => {
+    b.style.opacity = i === idx ? '1' : '0.4';
+    b.style.pointerEvents = 'none';
+    if (i === idx) b.classList.add('chosen');
+  });
+  const pct = Math.min(100, (state.timeUsed / 8) * 100);
+  const bar = document.getElementById('time-bar');
+  bar.style.width = pct + '%';
+  bar.className = 'bar-fill' + (pct > 100 ? ' danger' : pct > 75 ? ' warn' : '');
+  document.getElementById('hours-left').textContent = Math.max(0, 8 - state.timeUsed).toFixed(1);
+  const fb = document.getElementById('feedback');
+  fb.textContent = c.feedback + (state.timeUsed > 8 ? ' ⚠️ Your day is overloaded!' : '');
+  fb.style.display = 'block';
+  document.getElementById('next-btn').style.display = 'block';
+  document.getElementById('next-btn').textContent = currentRound === TOTAL_ROUNDS - 1 ? 'See my results →' : 'Next round →';
+}
+
+function nextRound() {
+  currentRound++;
+  if (currentRound >= TOTAL_ROUNDS) { showResults(); return; }
+  document.getElementById('feedback').style.display = 'none';
+  document.getElementById('next-btn').style.display = 'none';
+  renderRound();
+}
+
+function showResults() {
+  showScreen('screen-results');
+  const total = state.timeUsed || 8;
+  const allocs = [
+    {label:'Meetings',  key:'meetings',  color:'#378ADD'},
+    {label:'Reporting', key:'reporting', color:'#BA7517'},
+    {label:'Coaching',  key:'coaching',  color:'#1D9E75'},
+    {label:'Strategy',  key:'strategy',  color:'#7F77DD'},
+    {label:'Execution', key:'execution', color:'#D85A30'},
+  ];
+  const barsEl = document.getElementById('alloc-bars');
+  barsEl.innerHTML = '';
+  allocs.forEach(a => {
+    const pct = total > 0 ? Math.round((state[a.key] / total) * 100) : 0;
+    barsEl.innerHTML += `<div class="alloc-row"><div class="alloc-label">${a.label}</div><div class="alloc-track"><div class="alloc-fill" style="width:${pct}%;background:${a.color};"></div></div><div class="alloc-pct">${pct}%</div></div>`;
+  });
+
+  const coachPct = total > 0 ? state.coaching/total : 0;
+  const meetPct  = total > 0 ? state.meetings/total  : 0;
+  const stratPct = total > 0 ? state.strategy/total  : 0;
+  const repPct   = total > 0 ? state.reporting/total : 0;
+  const execPct  = total > 0 ? state.execution/total : 0;
+
+  let score = 0;
+  if (coachPct >= 0.15) score++;
+  if (stratPct >= 0.1)  score++;
+  if (meetPct  <= 0.35) score++;
+  if (repPct   <= 0.3)  score++;
+  if (execPct  >= 0.15) score++;
+
+  const bw = document.getElementById('score-badge-wrap');
+  if (score >= 4) bw.innerHTML = '<div class="score-badge badge-great">★ Strong leadership day</div>';
+  else if (score >= 2) bw.innerHTML = '<div class="score-badge badge-ok">◆ Solid — room to grow</div>';
+  else bw.innerHTML = '<div class="score-badge badge-poor">△ Reactive day — time to rebalance</div>';
+
+  let reality, impact, fixes;
+  if (repPct > 0.4) {
+    reality = "A large chunk of your day went into reporting and documentation. You were busy producing information — but not necessarily acting on it.";
+    impact  = "When managers over-invest in reporting, teams sense the pressure and start optimising for metrics over outcomes. Real execution suffers.";
+    fixes   = ["Standardise reports so they run without you","Ask: 'Who actually reads this, and what decision does it drive?'","Move reporting tasks to a team member with strong analytical skills"];
+  } else if (execPct < 0.1) {
+    reality = "Execution barely registered in your day. You were present in conversations, but the work itself didn't move forward meaningfully.";
+    impact  = "Managers who stay too far from execution lose credibility with their teams and miss early warning signs of delivery risk.";
+    fixes   = ["Block at least 1 hour daily for hands-on execution review","Join one delivery checkpoint per week to stay close to the work","Ask your team: 'What's the biggest blocker right now?' — and remove it"];
+  } else if (meetPct > 0.5) {
+    reality = "You spent the majority of your day in meetings. Most of that time was on other people's agendas, not your own.";
+    impact  = "Your team likely waited on you for decisions they could have made. Dependency increases when managers are unavailable.";
+    fixes   = ["Decline or delegate at least one recurring meeting this week","Set a meeting-free morning block","Ask: 'Do I need to be there, or just informed?'"];
+  } else if (coachPct < 0.1) {
+    reality = "Coaching and people development were barely visible in your day. You managed tasks, not people.";
+    impact  = "Without coaching, team growth stalls. You end up doing more yourself over time as your team's skills plateau.";
+    fixes   = ["Schedule at least one 1:1 coaching conversation this week","Ask your team what's blocking them, not just what they're working on","Block 30 minutes each week to check in on development goals"];
+  } else {
+    reality = "You balanced your day across multiple priorities — execution, reporting, people, and some forward thinking.";
+    impact  = "A balanced manager builds resilient teams. Your team likely feels both supported and trusted to own their work.";
+    fixes   = ["Keep the coaching habits — they compound over time","Continue protecting strategic thinking time","Look for one more delegation opportunity each week"];
+  }
+
+  document.getElementById('reality-text').textContent = reality;
+  document.getElementById('impact-text').textContent  = impact;
+  document.getElementById('fix-list').innerHTML = fixes.map(f => `<li class="fix-item"><div class="fix-dot"></div><span>${f}</span></li>`).join('');
+
+  buildCalculator();
+}
+
+function buildCalculator() {
+  sliderDefs.forEach(s => { sliderVals[s.key] = s.default; });
+  const wrap = document.getElementById('sliders-wrap');
+  wrap.innerHTML = '';
+  sliderDefs.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'slider-row';
+    row.innerHTML = `
+      <div class="slider-top">
+        <span class="slider-label">${s.label}</span>
+        <span class="slider-val" id="val-${s.key}">${s.default}%</span>
+      </div>
+      <input type="range" class="styled" id="sl-${s.key}" min="0" max="80" step="5" value="${s.default}"
+        style="background: linear-gradient(to right, ${s.color} 0%, ${s.color} ${s.default/80*100}%, #FDE68A ${s.default/80*100}%, #FDE68A 100%);">
+    `;
+    wrap.appendChild(row);
+    row.querySelector('input').addEventListener('input', function() {
+      sliderVals[s.key] = parseInt(this.value);
+      document.getElementById('val-' + s.key).textContent = this.value + '%';
+      const pct = this.value / 80 * 100;
+      this.style.background = `linear-gradient(to right, ${s.color} 0%, ${s.color} ${pct}%, #FDE68A ${pct}%, #FDE68A 100%)`;
+      updateCalc();
+    });
+  });
+  updateCalc();
+}
+
+function updateCalc() {
+  const total = Object.values(sliderVals).reduce((a,b) => a+b, 0);
+  const tv = document.getElementById('total-val');
+  tv.textContent = total + '%';
+  tv.className = 'total-val ' + (total >= 90 && total <= 110 ? 'total-ok' : 'total-warn');
+
+  const compEl = document.getElementById('comparison-rows');
+  compEl.innerHTML = '';
+  sliderDefs.forEach(s => {
+    const user = sliderVals[s.key];
+    const [lo, hi] = s.ideal;
+    let statusTag = '';
+    if      (user > hi) statusTag = `<span class="gap-tag gap-over">↑ ${user - hi}% over</span>`;
+    else if (user < lo) statusTag = `<span class="gap-tag gap-under">↓ ${lo - user}% under</span>`;
+    else                statusTag = `<span class="gap-tag gap-ok">✓ healthy</span>`;
+
+    const fillPct = Math.min(user / 80 * 100, 100);
+    compEl.innerHTML += `
+      <div class="ideal-row">
+        <div class="ideal-row-top">
+          <span class="ideal-label-text">${s.label}${statusTag}</span>
+          <span class="ideal-range-note">ideal ${lo}–${hi}%</span>
+        </div>
+        <div class="ideal-track">
+          <div class="ideal-fill" style="width:${fillPct}%;background:${s.color};"></div>
+        </div>
+      </div>`;
+  });
+
+  const insights = [];
+  if (sliderVals.meetings  > 25) insights.push("Your meeting load is high — consider auditing which ones truly need you.");
+  if (sliderVals.reporting > 20) insights.push("Admin and reporting above 20% often means manual work that could be automated or delegated.");
+  if (sliderVals.coaching  < 20) insights.push("Under 20% on coaching limits your team's growth. Even 30 extra minutes weekly compounds over months.");
+  if (sliderVals.strategy  < 15) insights.push("Less than 15% on strategy means you're likely reacting more than directing. Protect thinking time.");
+  if (sliderVals.execution < 15) insights.push("Low execution time can disconnect you from delivery reality — stay close to the work.");
+
+  document.getElementById('calc-insight').textContent =
+    insights.length > 0
+      ? insights[0]
+      : "Your time allocation looks well-balanced. Keep protecting the mix as your responsibilities grow.";
+}
+
+function restartGame() { showScreen('screen-start'); }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
